@@ -3,8 +3,9 @@
 Reports statistics per dataset and flags missing files so you can fix
 data issues before starting a multi-hour training run.
 
-Usage:
-    python scripts/validate_data.py --config configs/base.yaml
+Usage::
+
+    uv run validate-data --config configs/base.yaml
 """
 
 import argparse
@@ -96,13 +97,17 @@ def _count_image_files(image_dir: Path) -> Dict[str, int]:
     return counts
 
 
-def main(config_path: Path) -> None:
-    """Run validation across all configured datasets.
+def main() -> None:
+    """Entry point for data validation (registered as ``validate-data``)."""
+    parser = argparse.ArgumentParser(
+        description="Validate dataset images and manifests"
+    )
+    parser.add_argument(
+        "--config", type=Path, required=True, help="Path to YAML config"
+    )
+    args = parser.parse_args()
 
-    Args:
-        config_path: Path to the YAML configuration file.
-    """
-    config = PipelineConfig.from_yaml(config_path)
+    config = PipelineConfig.from_yaml(args.config)
     all_ok = True
 
     for name, entry in config.datasets.items():
@@ -116,7 +121,7 @@ def main(config_path: Path) -> None:
         total_files = sum(file_counts.values())
         logger.info("Files on disk: %d %s", total_files, dict(file_counts))
 
-        # Validate train manifest
+        # Validate each split
         for split, manifest_path in [
             ("train", Path(entry.train_manifest)),
             ("test", Path(entry.test_manifest)),
@@ -153,11 +158,4 @@ def main(config_path: Path) -> None:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Validate dataset images and manifests"
-    )
-    parser.add_argument(
-        "--config", type=Path, required=True, help="Path to YAML config"
-    )
-    args = parser.parse_args()
-    main(args.config)
+    main()

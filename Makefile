@@ -50,11 +50,11 @@ setup-dirs: ## Create required data and output directories
 
 .PHONY: validate-data
 validate-data: ## Validate that all images in manifests exist
-	$(TRAIN_VENV)/bin/python scripts/validate_data.py --config $(CONFIG)
+	$(TRAIN_VENV)/bin/validate-data --config $(CONFIG)
 
 .PHONY: prepare-manifests
 prepare-manifests: ## Convert raw dataset JSONs to pipeline-expected format
-	$(TRAIN_VENV)/bin/python scripts/prepare_manifests.py --config $(CONFIG)
+	$(TRAIN_VENV)/bin/prepare-manifests --config $(CONFIG) --dataset $(DATASET)
 
 # ---- Training ---------------------------------------------------------------
 

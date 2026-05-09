@@ -14,6 +14,10 @@ dependencies = [
     "pydicom>=2.4.0",
 ]
 
+[project.scripts]
+prepare-manifests = "xray_pipeline.scripts.prepare_manifests:main"
+validate-data = "xray_pipeline.scripts.validate_data:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=9.0",

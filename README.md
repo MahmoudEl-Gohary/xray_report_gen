@@ -210,7 +210,7 @@ This is the critical step. The script converts DICOMs to PNGs using `pydicom` an
 **For Spine (has DICOMs -- needs conversion):**
 
 ```bash
-python scripts/prepare_manifests.py \
+uv run prepare-manifests \
     --dataset spine \
     --source-dir /data/raw/vindr-spinexr/train_images \
     --config configs/base.yaml
@@ -226,7 +226,7 @@ This does two things:
 If knee images are in a different directory and need to be copied:
 
 ```bash
-python scripts/prepare_manifests.py \
+uv run prepare-manifests \
     --dataset knee \
     --source-dir /data/raw/knee_images \
     --config configs/base.yaml
@@ -235,7 +235,7 @@ python scripts/prepare_manifests.py \
 If knee images are already in `data/knee/images/`, just normalize the manifest:
 
 ```bash
-python scripts/prepare_manifests.py \
+uv run prepare-manifests \
     --dataset knee \
     --config configs/base.yaml \
     --skip-conversion
@@ -246,7 +246,7 @@ python scripts/prepare_manifests.py \
 After preprocessing, verify that all images referenced in the manifests exist:
 
 ```bash
-python scripts/validate_data.py --config configs/base.yaml
+uv run validate-data --config configs/base.yaml
 ```
 
 Expected output:
@@ -497,12 +497,12 @@ Tests validate the core pipeline logic (config loading, data reading, schema, I/
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `pip install` rejects Python version | `requires-python` constraint | Use Python 3.11 |
+| `pip install` rejects Python version | `requires-python` constraint | Use `uv venv --python 3.11` (auto-downloads) |
 | Dependency conflict on install | Training + eval deps mixed | Use separate venvs (`.venv` and `.venv_eval`) |
-| "No training data loaded" | Manifest paths or image dir wrong | Run `python scripts/validate_data.py --config configs/base.yaml` |
+| "No training data loaded" | Manifest paths or image dir wrong | Run `uv run validate-data --config configs/base.yaml` |
 | CUDA OOM during training | Batch too large or seq too long | Reduce `batch_size` or `max_seq_length` in config |
-| MLflow connection refused | DagsHub credentials not set | `export MLFLOW_TRACKING_USERNAME=...` and `MLFLOW_TRACKING_PASSWORD=...` |
-| Images not found by data reader | Nested paths in manifest | Run `python scripts/prepare_manifests.py --dataset spine --source-dir ... --config configs/base.yaml` |
+| MLflow connection refused | DagsHub credentials not set | Create a `.env` file (see Step 8) |
+| Images not found by data reader | Nested paths in manifest | Run `uv run prepare-manifests --dataset spine --source-dir ... --config configs/base.yaml` |
 | DICOM conversion fails | Missing pydicom | `uv pip install pydicom numpy Pillow` (included in base deps) |
 | RadEval crashes on import | Wrong venv active | Must use `.venv_eval`, not `.venv` |
 | `ModuleNotFoundError: unsloth` | Wrong venv active | Must use `.venv`, not `.venv_eval` |
@@ -518,6 +518,7 @@ xray_report_gen/
       config.py                 # Pydantic config models + CLI override
       schema.py                 # StudyRecord, InferenceResult dataclasses
       data_reader.py            # ManifestReader with logging + fallbacks
+      env.py                    # .env file loader (zero-dependency)
       io.py                     # ResultsWriter / ResultsReader (JSONL)
     training/
       dataset.py                # RadiologyDataset + build_training_dataset()
@@ -526,11 +527,12 @@ xray_report_gen/
     evaluation/
       evaluate.py               # RadEval evaluation entrypoint
       setup_resources.py        # Download NLTK/Stanza resources
-  scripts/
-    prepare_manifests.py        # DICOM-to-PNG conversion + manifest normalization
-    validate_data.py            # Check all images exist on disk
+    scripts/
+      prepare_manifests.py      # CLI: DICOM-to-PNG + manifest normalization
+      validate_data.py          # CLI: check all images exist on disk
   tests/                        # Unit tests (12 tests)
   Makefile                      # Automation targets
+  .env                          # NOT in git -- DagsHub credentials
   data/                         # NOT in git -- created after cloning
     spine/images/               # Preprocessed PNGs (separate from raw DICOMs)
     knee/images/

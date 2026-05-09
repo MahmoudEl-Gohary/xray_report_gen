@@ -12,20 +12,19 @@ This script performs two operations:
 This script must be run **offline, before training**. It only needs to
 be run once per dataset.
 
-Usage -- Convert DICOMs for the spine dataset:
-    python scripts/prepare_manifests.py \\
+Usage -- Convert DICOMs for the spine dataset::
+
+    uv run prepare-manifests \\
         --dataset spine \\
         --source-dir /path/to/vindr-spinexr/.../train_images \\
         --config configs/base.yaml
 
-Usage -- Normalize manifest only (images are already PNGs):
-    python scripts/prepare_manifests.py \\
+Usage -- Normalize manifest only (images are already PNGs)::
+
+    uv run prepare-manifests \\
         --dataset knee \\
         --config configs/base.yaml \\
         --skip-conversion
-
-Dependencies:
-    uv pip install pydicom numpy Pillow
 """
 
 import argparse
@@ -96,18 +95,18 @@ def _dicom_to_png(dicom_path: Path, output_path: Path) -> bool:
         return False
 
 
-def _find_dicom_file(
+def _find_source_file(
     source_dir: Path, filename: str
 ) -> Optional[Path]:
-    """Locate a DICOM file in the source directory, searching recursively.
+    """Locate a source file in the source directory, searching recursively.
 
     Handles cases where the manifest has a nested path like
     ``vindr-spinexr/.../train_images/xxx.dicom`` but the actual file
     is at ``source_dir/xxx.dicom``.
 
     Args:
-        source_dir: Root directory to search for DICOMs.
-        filename: The basename of the DICOM file (e.g., ``xxx.dicom``).
+        source_dir: Root directory to search for source files.
+        filename: The basename of the file (e.g., ``xxx.dicom``).
 
     Returns:
         Path to the found file, or None if not found.
@@ -117,7 +116,7 @@ def _find_dicom_file(
     if candidate.exists():
         return candidate
 
-    # Try without extension variations
+    # Try DICOM extension variations
     stem = Path(filename).stem
     for ext in (".dicom", ".dcm", ".DICOM", ".DCM"):
         candidate = source_dir / (stem + ext)
@@ -131,16 +130,18 @@ def _find_dicom_file(
     return None
 
 
-def _convert_dataset_dicoms(
+def _convert_dataset_images(
     manifest_path: Path,
     source_dir: Path,
     output_dir: Path,
 ) -> tuple[int, int]:
-    """Convert all DICOMs referenced in a manifest to PNGs.
+    """Convert all images referenced in a manifest to PNGs in the output dir.
+
+    DICOMs are converted via pydicom. PNGs/JPGs are copied as-is.
 
     Args:
         manifest_path: Path to the JSON manifest file.
-        source_dir: Directory containing the raw DICOM files.
+        source_dir: Directory containing the raw source files.
         output_dir: Directory where PNGs will be saved.
 
     Returns:
@@ -176,9 +177,9 @@ def _convert_dataset_dicoms(
                 converted += 1
                 continue
 
-            # Only convert if source is a DICOM
+            # DICOM -> convert to PNG with pydicom
             if basename.lower().endswith((".dicom", ".dcm")):
-                dicom_file = _find_dicom_file(source_dir, basename)
+                dicom_file = _find_source_file(source_dir, basename)
                 if dicom_file is None:
                     logger.warning(
                         "Study %s: DICOM not found in source dir: %s",
@@ -193,11 +194,11 @@ def _convert_dataset_dicoms(
                 else:
                     skipped += 1
             else:
-                # Source is already PNG/JPG -- copy to output dir
-                src_file = _find_dicom_file(source_dir, basename)
-                if src_file is not None:
-                    import shutil
+                # Already PNG/JPG -- copy to output dir
+                import shutil
 
+                src_file = _find_source_file(source_dir, basename)
+                if src_file is not None:
                     shutil.copy2(src_file, png_path)
                     converted += 1
                 else:
@@ -271,7 +272,7 @@ def _normalize_manifest(manifest_path: Path) -> int:
 
 
 def main() -> None:
-    """Entry point for dataset preprocessing."""
+    """Entry point for dataset preprocessing (registered as ``prepare-manifests``)."""
     parser = argparse.ArgumentParser(
         description=(
             "Preprocess raw datasets: convert DICOMs to PNGs and "
@@ -309,7 +310,6 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    # Late import to avoid requiring all deps just for --help
     from xray_pipeline.core.config import PipelineConfig
 
     config = PipelineConfig.from_yaml(args.config)
@@ -348,7 +348,7 @@ def main() -> None:
             ("train", Path(ds_entry.train_manifest)),
             ("test", Path(ds_entry.test_manifest)),
         ]:
-            converted, skipped = _convert_dataset_dicoms(
+            converted, skipped = _convert_dataset_images(
                 manifest_path=manifest_path,
                 source_dir=args.source_dir,
                 output_dir=image_dir,
@@ -379,7 +379,10 @@ def main() -> None:
             manifest_path,
         )
 
-    logger.info("Done. Run 'python scripts/validate_data.py --config %s' to verify.", args.config)
+    logger.info(
+        "Done. Run 'uv run validate-data --config %s' to verify.",
+        args.config,
+    )
 
 
 if __name__ == "__main__":
