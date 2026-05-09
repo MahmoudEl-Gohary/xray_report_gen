@@ -26,5 +26,7 @@ training = [
 ]
 
 evaluation = [
-
+    "radeval @ git+https://github.com/jbdel/RadEval.git",
+    "nltk>=3.8",
+    "stanza>=1.6"
 ]

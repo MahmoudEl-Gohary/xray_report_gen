@@ -7,6 +7,7 @@ paths:
   data_root: "/data/xray"
   results_dir: "./results"
   mlflow_tracking_uri: "file:./mlruns"
+  eval_resources_dir: "./.eval_cache"
 
 model_id: "unsloth/Qwen2.5-VL-3B-Instruct"
 
