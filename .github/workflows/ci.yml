@@ -24,7 +24,7 @@ jobs:
           python-version: "3.14"
 
       - name: Install dependencies
-        run: uv pip install -e ".[dev]" --system
+        run: uv pip install -e ".[dev,training]" --system
 
       - name: Run tests
         run: pytest tests/

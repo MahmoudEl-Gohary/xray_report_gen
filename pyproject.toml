@@ -13,3 +13,12 @@ dependencies = [
 dev = [
     "pytest>=9.0"
 ]
+
+training = [
+    "torch>=2.0.0",
+    "Pillow>=10.0"
+]
+
+evaluation = [
+
+]
