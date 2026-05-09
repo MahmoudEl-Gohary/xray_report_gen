@@ -11,6 +11,7 @@ class PathsConfig(BaseModel):
     data_root: str
     results_dir: str
     mlflow_tracking_uri: str
+    eval_resources_dir: str = "./.eval_cache"
 
 class LoraConfig(BaseModel):
     r: int = 16
