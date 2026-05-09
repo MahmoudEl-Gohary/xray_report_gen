@@ -5,6 +5,8 @@ def test_study_record_creation():
     record = StudyRecord(
         study_id="mimic_001",
         image_paths=[Path("/data/img1.png"), Path("/data/img2.png")],
+        system_prompt="You are a radiologist.",
+        user_prompt="Analyze this.",
         report_html="<p>Normal heart size.</p>",
         dataset_name="mimic_cxr",
         split="train"

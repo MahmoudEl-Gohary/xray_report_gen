@@ -10,6 +10,8 @@ class StudyRecord:
     """
     study_id: str
     image_paths: List[Path]
+    system_prompt: str
+    user_prompt: str
     report_html: str
     dataset_name: str
     split: str
