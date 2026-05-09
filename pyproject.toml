@@ -1,32 +1,40 @@
 [project]
 name = "xray-report-gen"
 version = "0.1.0"
-description = "Add your description here"
+description = "Pipeline for training, inference and evaluation of X-ray report generation models."
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.10,<3.14"
 dependencies = [
     "pydantic>=2.0",
-    "pyyaml>=6.0"
+    "pyyaml>=6.0",
+    "dagshub>=0.3.0",
+    "tqdm>=4.60.0",
+    "Pillow>=10.0",
+    "numpy>=1.24.0",
+    "pydicom>=2.4.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=9.0"
+    "pytest>=9.0",
 ]
+
+# IMPORTANT: training and evaluation extras CANNOT be co-installed.
+# They require conflicting versions of transformers (4.x vs 5.x).
+# Use separate virtual environments: .venv for training, .venv_eval for evaluation.
 
 training = [
     "torch>=2.0.0",
     "Pillow>=10.0",
-    "transformers>=4.45.0",
+    "transformers>=4.45.0,<5.0",
     "unsloth>=2024.8",
     "trl>=0.11.0",
     "peft>=0.12.0",
     "mlflow>=2.14.0",
-    "accelerate>=0.34.0"
+    "accelerate>=0.34.0",
 ]
 
 evaluation = [
     "radeval @ git+https://github.com/jbdel/RadEval.git",
-    "nltk>=3.8",
-    "stanza>=1.6"
+    "mlflow>=2.14.0",
 ]
