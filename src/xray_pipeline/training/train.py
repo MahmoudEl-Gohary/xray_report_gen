@@ -3,6 +3,9 @@ import logging
 import subprocess
 from pathlib import Path
 
+from xray_pipeline.core.env import load_dotenv
+load_dotenv()
+
 import dagshub
 import mlflow
 

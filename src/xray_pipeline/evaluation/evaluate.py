@@ -4,6 +4,9 @@ import logging
 from pathlib import Path
 from typing import Optional
 
+from xray_pipeline.core.env import load_dotenv
+load_dotenv()
+
 import mlflow
 
 from xray_pipeline.core.config import PipelineConfig

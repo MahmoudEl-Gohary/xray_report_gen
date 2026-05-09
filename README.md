@@ -9,16 +9,17 @@ A pipeline for training, inference, and evaluation of multi-anatomy X-ray report
 - [Requirements](#requirements)
 - [Step-by-Step Setup (After Cloning)](#step-by-step-setup-after-cloning)
   - [Step 1: Create Directories](#step-1-create-directories)
-  - [Step 2: Setup Training Environment](#step-2-setup-training-environment)
-  - [Step 3: Setup Evaluation Environment](#step-3-setup-evaluation-environment)
-  - [Step 4: Place Raw Datasets](#step-4-place-raw-datasets)
-  - [Step 5: Preprocess Datasets](#step-5-preprocess-datasets)
-  - [Step 6: Validate Data](#step-6-validate-data)
-  - [Step 7: Configure DagsHub/MLflow](#step-7-configure-dagshubmlflow)
-  - [Step 8: Edit Config Parameters](#step-8-edit-config-parameters)
-  - [Step 9: Run Training](#step-9-run-training)
-  - [Step 10: Run Inference](#step-10-run-inference)
-  - [Step 11: Run Evaluation](#step-11-run-evaluation)
+  - [Step 2: Install uv](#step-2-install-uv-if-not-already-installed)
+  - [Step 3: Setup Training Environment](#step-3-setup-training-environment)
+  - [Step 4: Setup Evaluation Environment](#step-4-setup-evaluation-environment)
+  - [Step 5: Place Raw Datasets](#step-5-place-raw-datasets)
+  - [Step 6: Preprocess Datasets](#step-6-preprocess-datasets)
+  - [Step 7: Validate Data](#step-7-validate-data)
+  - [Step 8: Configure DagsHub/MLflow](#step-8-configure-dagshubmlflow)
+  - [Step 9: Edit Config Parameters](#step-9-edit-config-parameters)
+  - [Step 10: Run Training](#step-10-run-training)
+  - [Step 11: Run Inference](#step-11-run-inference)
+  - [Step 12: Run Evaluation](#step-12-run-evaluation)
 - [Configuration Reference](#configuration-reference)
 - [Makefile Targets](#makefile-targets)
 - [CLI Override for Hyperparameter Sweeps](#cli-override-for-hyperparameter-sweeps)
@@ -68,15 +69,15 @@ configs/base.yaml          <-- Single source of truth for all parameters
 
 ## Requirements
 
-- Python 3.11 (Unsloth does not support 3.14)
+- `uv` package manager (install: `curl -LsSf https://astral.sh/uv/install.sh | sh`)
 - NVIDIA GPU with CUDA 12.4+ (A100 80GB recommended)
-- `uv` package manager (or `pip`)
+- No specific system Python version needed -- `uv` downloads Python 3.11 automatically
 
 ---
 
 ## Step-by-Step Setup (After Cloning)
 
-This section walks through **every step** from `git clone` to a completed training run on the A100 machine.
+This section walks through **every step** from `git clone` to a completed training run on the A100 machine. Nothing is installed system-wide; everything stays inside the project directory.
 
 ### Step 1: Create Directories
 
@@ -114,13 +115,26 @@ xray_report_gen/
   tests/
 ```
 
-### Step 2: Setup Training Environment
+### Step 2: Install uv (if not already installed)
 
 ```bash
-python3.11 -m venv .venv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Verify:
+
+```bash
+uv --version
+```
+
+### Step 3: Setup Training Environment
+
+`uv` downloads the exact Python version needed -- no system Python 3.11 required.
+
+```bash
+# Creates .venv with Python 3.11 (downloaded automatically)
+uv venv .venv --python 3.11
 source .venv/bin/activate
-pip install --upgrade pip
-pip install uv
 uv pip install -e ".[dev,training]"
 ```
 
@@ -133,27 +147,22 @@ make setup-train
 Verify it works:
 
 ```bash
+source .venv/bin/activate
 python -c "import unsloth; print('Unsloth OK')"
 python -c "import torch; print('CUDA:', torch.cuda.is_available())"
 ```
 
-### Step 3: Setup Evaluation Environment
+### Step 4: Setup Evaluation Environment
 
 This is a **separate virtual environment** because RadEval requires `transformers>=5.0` while Unsloth needs `transformers<5.0`.
 
 ```bash
-deactivate  # Exit training venv first
-python3.11 -m venv .venv_eval
-source .venv_eval/bin/activate
-pip install --upgrade pip
-pip install uv
-uv pip install -e ".[evaluation]"
+# Creates .venv_eval with Python 3.11 (same version, different deps)
+uv venv .venv_eval --python 3.11
+uv pip install -e ".[evaluation]" --python .venv_eval/bin/python
 
 # Download NLTK and Stanza models for RadEval
-python -m xray_pipeline.evaluation.setup_resources --config configs/base.yaml
-
-deactivate  # Go back to training venv for next steps
-source .venv/bin/activate
+.venv_eval/bin/python -m xray_pipeline.evaluation.setup_resources --config configs/base.yaml
 ```
 
 Or via Makefile:
@@ -162,7 +171,7 @@ Or via Makefile:
 make setup-eval
 ```
 
-### Step 4: Place Raw Datasets
+### Step 5: Place Raw Datasets
 
 Copy your raw dataset files to the machine. The expected locations:
 
@@ -194,7 +203,7 @@ data/knee/train_manifest.json
 data/knee/test_manifest.json
 ```
 
-### Step 5: Preprocess Datasets
+### Step 6: Preprocess Datasets
 
 This is the critical step. The script converts DICOMs to PNGs using `pydicom` and normalizes manifest paths.
 
@@ -232,7 +241,7 @@ python scripts/prepare_manifests.py \
     --skip-conversion
 ```
 
-### Step 6: Validate Data
+### Step 7: Validate Data
 
 After preprocessing, verify that all images referenced in the manifests exist:
 
@@ -261,22 +270,23 @@ All datasets validated successfully.
 
 If any images are missing, the output will show `[ISSUES]` with the specific study IDs and filenames. Fix them before proceeding.
 
-### Step 7: Configure DagsHub/MLflow
+### Step 8: Configure DagsHub/MLflow
 
-Create a [DagsHub](https://dagshub.com) repository (or use an existing one) and set credentials:
+Create a [DagsHub](https://dagshub.com) repository (or use an existing one).
 
-```bash
-export MLFLOW_TRACKING_USERNAME="your-dagshub-username"
-export MLFLOW_TRACKING_PASSWORD="your-dagshub-token"
-```
-
-To make these persist across sessions, add them to `~/.bashrc`:
+Credentials are loaded from a `.env` file in the project root -- **no system environment variables needed**. This is safe for borrowed machines since nothing is written outside the project directory.
 
 ```bash
-echo 'export MLFLOW_TRACKING_USERNAME="your-dagshub-username"' >> ~/.bashrc
-echo 'export MLFLOW_TRACKING_PASSWORD="your-dagshub-token"' >> ~/.bashrc
-source ~/.bashrc
+# Create the .env file (it is gitignored, will not be committed)
+cat > .env << 'EOF'
+MLFLOW_TRACKING_USERNAME=your-dagshub-username
+MLFLOW_TRACKING_PASSWORD=your-dagshub-token
+EOF
 ```
+
+The `.env` file is automatically loaded by:
+- **Makefile targets** (via `-include .env` + `export`)
+- **Python scripts** (via `xray_pipeline.core.env.load_dotenv()` at startup)
 
 The tracking URI in `configs/base.yaml` is set to:
 
@@ -286,7 +296,7 @@ https://dagshub.com/MahmoudEl-Gohary/xray_report_gen.mlflow
 
 Update this if your DagsHub repo name or username is different.
 
-### Step 8: Edit Config Parameters
+### Step 9: Edit Config Parameters
 
 All parameters are in `configs/base.yaml`. Here are the most important ones to review before your first run:
 
@@ -311,7 +321,7 @@ python -m xray_pipeline.training.train \
     --override training.max_steps=10 training.logging_steps=1
 ```
 
-### Step 9: Run Training
+### Step 10: Run Training
 
 ```bash
 source .venv/bin/activate
@@ -331,7 +341,7 @@ Training will:
 
 Monitor training on DagsHub: `https://dagshub.com/MahmoudEl-Gohary/xray_report_gen`
 
-### Step 10: Run Inference
+### Step 11: Run Inference
 
 Run inference on a specific dataset's test split:
 
@@ -354,7 +364,7 @@ make infer DATASET=spine
 
 Predictions are saved to: `results/baseline-qwen/spine/predictions.jsonl`
 
-### Step 11: Run Evaluation
+### Step 12: Run Evaluation
 
 Switch to the evaluation environment:
 

@@ -1,34 +1,37 @@
 # ============================================================================
 # X-Ray Report Generation Pipeline -- Makefile
 # ============================================================================
-# This Makefile automates environment setup, training, inference, and
-# evaluation. Training and evaluation use SEPARATE virtual environments
-# because their dependencies conflict (transformers 4.x vs 5.x).
+# Uses `uv` for environment management. uv downloads the exact Python
+# version needed, so no system Python installation is required.
+#
+# Credentials: Create a `.env` file in the project root with:
+#   MLFLOW_TRACKING_USERNAME=your-dagshub-username
+#   MLFLOW_TRACKING_PASSWORD=your-dagshub-token
 # ============================================================================
 
-PYTHON      ?= python3.11
+# Load .env if it exists (credentials, custom overrides)
+-include .env
+export
+
 TRAIN_VENV  := .venv
 EVAL_VENV   := .venv_eval
 CONFIG      ?= configs/base.yaml
 CHECKPOINT  ?= results/lora_model
 DATASET     ?= spine
+PY_VERSION  ?= 3.11
 
 # ---- Environment Setup -----------------------------------------------------
 
 .PHONY: setup-train
 setup-train: ## Create training venv and install deps
-	$(PYTHON) -m venv $(TRAIN_VENV)
-	$(TRAIN_VENV)/bin/pip install --upgrade pip
-	$(TRAIN_VENV)/bin/pip install uv
-	$(TRAIN_VENV)/bin/uv pip install -e ".[dev,training]"
+	uv venv $(TRAIN_VENV) --python $(PY_VERSION)
+	uv pip install -e ".[dev,training]" --python $(TRAIN_VENV)/bin/python
 	@echo "Training environment ready: source $(TRAIN_VENV)/bin/activate"
 
 .PHONY: setup-eval
 setup-eval: ## Create evaluation venv and install deps
-	$(PYTHON) -m venv $(EVAL_VENV)
-	$(EVAL_VENV)/bin/pip install --upgrade pip
-	$(EVAL_VENV)/bin/pip install uv
-	$(EVAL_VENV)/bin/uv pip install -e ".[evaluation]"
+	uv venv $(EVAL_VENV) --python $(PY_VERSION)
+	uv pip install -e ".[evaluation]" --python $(EVAL_VENV)/bin/python
 	$(EVAL_VENV)/bin/python -m xray_pipeline.evaluation.setup_resources --config $(CONFIG)
 	@echo "Evaluation environment ready: source $(EVAL_VENV)/bin/activate"
 

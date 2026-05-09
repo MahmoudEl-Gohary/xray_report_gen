@@ -19,3 +19,6 @@ mlruns/
 
 # Evaluation cache
 .eval_cache/
+
+# Credentials (never commit)
+.env
