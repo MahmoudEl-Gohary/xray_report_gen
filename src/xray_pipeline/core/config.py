@@ -63,6 +63,25 @@ class InferenceConfig(BaseModel):
     temperature: float = 0.1
 
 
+class EvalConfig(BaseModel):
+    """Evaluation configuration for RadEval metrics.
+
+    Available metrics (RadEval 2.1+):
+        bleu, rouge, bertscore, radeval_bertscore, f1chexbert,
+        f1radbert_ct, radgraph, ratescore, radgraph_radcliq,
+        radcliq, srrbert, temporal, green, mammo_green,
+        crimson, radfact_ct
+
+    Note: LLM-based metrics (crimson, mammo_green, radfact_ct)
+    require API keys set via OPENAI_API_KEY / GEMINI_API_KEY
+    environment variables (or in the .env file).
+    """
+
+    metrics: list[str] = ["bleu", "rouge", "bertscore", "radcliq", "f1chexbert"]
+    per_sample: bool = False
+    detailed: bool = False
+
+
 class PipelineConfig(BaseModel):
     """Root configuration for the entire pipeline."""
 
@@ -73,6 +92,7 @@ class PipelineConfig(BaseModel):
     lora: LoraConfig = LoraConfig()
     training: TrainingConfig = TrainingConfig()
     inference: InferenceConfig = InferenceConfig()
+    evaluation: EvalConfig = EvalConfig()
 
     @classmethod
     def from_yaml(cls, path: Path) -> "PipelineConfig":

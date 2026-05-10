@@ -7,7 +7,7 @@ def test_config_loader():
     config = PipelineConfig.from_yaml(config_path)
 
     assert config.project.name == "multianatomy-xray-report-generation"
-    assert config.model_id == "unsloth/Qwen2.5-VL-2B-Instruct"
+    assert config.model_id == "unsloth/Qwen3.5-2B"
     assert config.project.seed == 3407
 
     # Check nested configs
@@ -24,6 +24,10 @@ def test_config_loader():
     # Check inference config
     assert config.inference.max_new_tokens == 512
     assert config.inference.temperature == 0.1
+
+    # Check evaluation config
+    assert "bleu" in config.evaluation.metrics
+    assert config.evaluation.per_sample is False
 
 
 def test_config_overrides():
@@ -43,4 +47,4 @@ def test_config_overrides():
 
     # Unmodified fields should remain at their YAML defaults
     assert config.project.seed == 3407
-    assert config.model_id == "unsloth/Qwen2.5-VL-2B-Instruct"
+    assert config.model_id == "unsloth/Qwen3.5-2B"

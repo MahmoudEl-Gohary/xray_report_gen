@@ -18,6 +18,7 @@ EVAL_VENV   := .venv_eval
 CONFIG      ?= configs/base.yaml
 CHECKPOINT  ?= results/lora_model
 DATASET     ?= spine
+SOURCE_DIR  ?=
 PY_VERSION  ?= 3.11
 
 # ---- Environment Setup -----------------------------------------------------
@@ -32,7 +33,6 @@ setup-train: ## Create training venv and install deps
 setup-eval: ## Create evaluation venv and install deps
 	uv venv $(EVAL_VENV) --python $(PY_VERSION)
 	uv pip install -e ".[evaluation]" --python $(EVAL_VENV)/bin/python
-	$(EVAL_VENV)/bin/python -m xray_pipeline.evaluation.setup_resources --config $(CONFIG)
 	@echo "Evaluation environment ready: source $(EVAL_VENV)/bin/activate"
 
 .PHONY: setup-all
@@ -50,11 +50,17 @@ setup-dirs: ## Create required data and output directories
 
 .PHONY: validate-data
 validate-data: ## Validate that all images in manifests exist
-	$(TRAIN_VENV)/bin/validate-data --config $(CONFIG)
+	$(TRAIN_VENV)/bin/python -m xray_pipeline.scripts.validate_data --config $(CONFIG)
 
 .PHONY: prepare-manifests
-prepare-manifests: ## Convert raw dataset JSONs to pipeline-expected format
-	$(TRAIN_VENV)/bin/prepare-manifests --config $(CONFIG) --dataset $(DATASET)
+prepare-manifests: ## Preprocess dataset (set DATASET=spine SOURCE_DIR=/path/to/dicoms)
+ifndef SOURCE_DIR
+	$(TRAIN_VENV)/bin/python -m xray_pipeline.scripts.prepare_manifests \
+		--config $(CONFIG) --dataset $(DATASET) --skip-conversion
+else
+	$(TRAIN_VENV)/bin/python -m xray_pipeline.scripts.prepare_manifests \
+		--config $(CONFIG) --dataset $(DATASET) --source-dir $(SOURCE_DIR)
+endif
 
 # ---- Training ---------------------------------------------------------------
 

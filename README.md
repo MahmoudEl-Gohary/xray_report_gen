@@ -154,15 +154,12 @@ python -c "import torch; print('CUDA:', torch.cuda.is_available())"
 
 ### Step 4: Setup Evaluation Environment
 
-This is a **separate virtual environment** because RadEval requires `transformers>=5.0` while Unsloth needs `transformers<5.0`.
+RadEval has its own model dependencies (CheXbert, RadGraph, etc.) so we keep it isolated
+from the training venv to avoid dependency bloat.
 
 ```bash
-# Creates .venv_eval with Python 3.11 (same version, different deps)
 uv venv .venv_eval --python 3.11
 uv pip install -e ".[evaluation]" --python .venv_eval/bin/python
-
-# Download NLTK and Stanza models for RadEval
-.venv_eval/bin/python -m xray_pipeline.evaluation.setup_resources --config configs/base.yaml
 ```
 
 Or via Makefile:
@@ -210,7 +207,11 @@ This is the critical step. The script converts DICOMs to PNGs using `pydicom` an
 **For Spine (has DICOMs -- needs conversion):**
 
 ```bash
-uv run prepare-manifests \
+# Via Makefile:
+make prepare-manifests DATASET=spine SOURCE_DIR=/data/raw/vindr-spinexr/train_images
+
+# Or directly:
+.venv/bin/python -m xray_pipeline.scripts.prepare_manifests \
     --dataset spine \
     --source-dir /data/raw/vindr-spinexr/train_images \
     --config configs/base.yaml
@@ -226,19 +227,14 @@ This does two things:
 If knee images are in a different directory and need to be copied:
 
 ```bash
-uv run prepare-manifests \
-    --dataset knee \
-    --source-dir /data/raw/knee_images \
-    --config configs/base.yaml
+make prepare-manifests DATASET=knee SOURCE_DIR=/data/raw/knee_images
 ```
 
 If knee images are already in `data/knee/images/`, just normalize the manifest:
 
 ```bash
-uv run prepare-manifests \
-    --dataset knee \
-    --config configs/base.yaml \
-    --skip-conversion
+# Without SOURCE_DIR, Makefile auto-adds --skip-conversion
+make prepare-manifests DATASET=knee
 ```
 
 ### Step 7: Validate Data
@@ -246,7 +242,7 @@ uv run prepare-manifests \
 After preprocessing, verify that all images referenced in the manifests exist:
 
 ```bash
-uv run validate-data --config configs/base.yaml
+make validate-data
 ```
 
 Expected output:
@@ -414,7 +410,7 @@ datasets:
     test_manifest: "data/knee/test_manifest.json"
     image_dir: "data/knee/images"
 
-model_id: "unsloth/Qwen2.5-VL-2B-Instruct"
+model_id: "unsloth/Qwen3.5-2B"
 
 lora:
   r: 16                  # LoRA rank
@@ -440,21 +436,30 @@ training:
 inference:
   max_new_tokens: 512     # Max tokens to generate per study
   temperature: 0.1        # Low temp = more deterministic output
+
+# Available: bleu, rouge, bertscore, radeval_bertscore, f1chexbert,
+#            f1radbert_ct, radgraph, ratescore, radgraph_radcliq,
+#            radcliq, srrbert, temporal, green, mammo_green,
+#            crimson, radfact_ct
+evaluation:
+  metrics: [bleu, rouge, bertscore, radcliq, f1chexbert]
+  per_sample: false       # true = per-sample list, false = corpus average
+  detailed: false         # true = sub-scores (BLEU-1/2/3/4, label F1s)
 ```
 
 ## Makefile Targets
 
-| Target | Command | Description |
+| Target | Variables | Description |
 |---|---|---|
 | `make setup-dirs` | -- | Create all required directories |
 | `make setup-train` | -- | Create `.venv` and install training deps |
 | `make setup-eval` | -- | Create `.venv_eval` and install eval deps |
 | `make setup-all` | -- | Setup both environments |
-| `make prepare-manifests` | -- | Convert DICOMs + normalize manifests |
+| `make prepare-manifests` | `DATASET=spine SOURCE_DIR=/path` | Convert DICOMs + normalize manifests |
 | `make validate-data` | -- | Check all images exist |
 | `make train` | -- | Run training |
-| `make infer DATASET=spine` | -- | Run inference on a dataset |
-| `make evaluate DATASET=spine` | -- | Run evaluation on a dataset |
+| `make infer` | `DATASET=spine` | Run inference on a dataset |
+| `make evaluate` | `DATASET=spine` | Run evaluation on a dataset |
 | `make pipeline` | -- | Run train -> infer -> evaluate |
 | `make test` | -- | Run unit tests |
 | `make clean` | -- | Remove build artifacts |

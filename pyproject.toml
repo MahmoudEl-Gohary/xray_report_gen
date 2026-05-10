@@ -23,14 +23,14 @@ dev = [
     "pytest>=9.0",
 ]
 
-# IMPORTANT: training and evaluation extras CANNOT be co-installed.
-# They require conflicting versions of transformers (4.x vs 5.x).
-# Use separate virtual environments: .venv for training, .venv_eval for evaluation.
+# Training and evaluation use separate virtual environments for isolation.
+# Both now require transformers 5.x so they CAN share a venv if desired,
+# but RadEval pulls heavy model dependencies that slow down training setup.
 
 training = [
     "torch>=2.0.0",
     "Pillow>=10.0",
-    "transformers>=4.45.0,<5.0",
+    "transformers>=5.2.0",
     "unsloth>=2024.8",
     "trl>=0.11.0",
     "peft>=0.12.0",
@@ -39,6 +39,6 @@ training = [
 ]
 
 evaluation = [
-    "radeval @ git+https://github.com/jbdel/RadEval.git",
+    "radeval>=2.1.0",
     "mlflow>=2.14.0",
 ]

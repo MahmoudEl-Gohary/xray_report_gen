@@ -1,4 +1,22 @@
-import os
+"""Evaluate generated radiology reports using RadEval.
+
+Uses the new RadEval 2.x API where metrics are passed as a list of
+strings rather than individual boolean flags. The set of metrics to
+compute is driven by ``config.evaluation.metrics`` in the YAML config.
+
+Usage::
+
+    python -m xray_pipeline.evaluation.evaluate \\
+        --config configs/base.yaml \\
+        --dataset spine
+
+    # Link metrics to an existing training run:
+    python -m xray_pipeline.evaluation.evaluate \\
+        --config configs/base.yaml \\
+        --dataset spine \\
+        --run-id <mlflow-run-id>
+"""
+
 import argparse
 import logging
 from pathlib import Path
@@ -34,13 +52,8 @@ def run_evaluation(
     """
     config = PipelineConfig.from_yaml(config_path)
 
-    # Enforce strict cache paths BEFORE importing ML libraries
-    res_dir = Path(config.paths.eval_resources_dir).resolve()
-    os.environ["NLTK_DATA"] = str(res_dir / "nltk_data")
-    os.environ["STANZA_RESOURCES_DIR"] = str(res_dir / "stanza_resources")
-
-    # Late import to respect the environment variables we just set
-    from RadEval import RadEval
+    # Late import: radeval is only available in the eval environment
+    from radeval import RadEval
 
     # -- Read Predictions --------------------------------------------------
     run_dir = (
@@ -62,51 +75,80 @@ def run_evaluation(
         return
 
     logger.info(
-        "Loaded %d predictions for dataset '%s'. Running RadEval...",
-        len(references),
-        dataset_name,
+        "Loaded %d predictions for dataset '%s'.", len(references), dataset_name
     )
 
-    # -- Evaluate ----------------------------------------------------------
+    # -- Build Evaluator from Config ---------------------------------------
+    eval_cfg = config.evaluation
+    logger.info("Running RadEval with metrics: %s", eval_cfg.metrics)
+
     evaluator = RadEval(
-        do_radcliq=True,
-        do_bleu=True,
-        do_bertscore=True,
-        do_chexbert=False,
-        do_radgraph=False,
+        metrics=eval_cfg.metrics,
+        per_sample=eval_cfg.per_sample,
+        detailed=eval_cfg.detailed,
     )
 
     scores = evaluator(refs=references, hyps=predictions)
 
-    # -- Log to MLflow -----------------------------------------------------
+    # -- Flatten & Log to MLflow -------------------------------------------
     mlflow.set_tracking_uri(config.paths.mlflow_tracking_uri)
     mlflow.set_experiment(config.project.experiment_name)
 
-    # Flatten scores if nested, and ensure all values are numeric
-    flat_scores = {}
-    for key, value in scores.items():
-        if isinstance(value, (int, float)):
-            flat_scores[f"eval_{dataset_name}_{key}"] = value
-        elif isinstance(value, dict):
-            for sub_key, sub_value in value.items():
-                if isinstance(sub_value, (int, float)):
-                    flat_scores[f"eval_{dataset_name}_{key}_{sub_key}"] = sub_value
+    flat_scores = _flatten_scores(scores, dataset_name)
 
     if run_id:
-        # Log to the same run as training
         with mlflow.start_run(run_id=run_id):
             mlflow.log_metrics(flat_scores)
             logger.info("Metrics logged to existing MLflow run: %s", run_id)
     else:
-        # Create a new evaluation run
         with mlflow.start_run(run_name=f"eval_{dataset_name}"):
             mlflow.log_metrics(flat_scores)
             mlflow.set_tag("eval_dataset", dataset_name)
+            mlflow.set_tag("eval_metrics", ",".join(eval_cfg.metrics))
             logger.info("Metrics logged to new MLflow run.")
 
     logger.info("Evaluation complete:")
     for metric, value in flat_scores.items():
         logger.info("  %s: %.4f", metric, value)
+
+
+def _flatten_scores(
+    scores: dict, dataset_name: str
+) -> dict[str, float]:
+    """Flatten potentially nested RadEval output into MLflow-compatible metrics.
+
+    RadEval returns a flat dict in default mode (``{"bleu": 0.36, ...}``),
+    but some metrics produce sub-keys when ``detailed=True``
+    (e.g., ``{"bleu_1": 0.55, "bleu_2": 0.42}``).
+
+    Per-sample mode returns lists which are averaged here for MLflow logging.
+
+    Args:
+        scores: Raw RadEval output dict.
+        dataset_name: Dataset name prefix for metric keys.
+
+    Returns:
+        Dict of ``{eval_<dataset>_<metric>: float}``.
+    """
+    flat: dict[str, float] = {}
+
+    for key, value in scores.items():
+        prefixed_key = f"eval_{dataset_name}_{key}"
+
+        if isinstance(value, (int, float)):
+            flat[prefixed_key] = float(value)
+        elif isinstance(value, list):
+            # Per-sample mode: average for MLflow
+            numeric = [v for v in value if isinstance(v, (int, float))]
+            if numeric:
+                flat[prefixed_key] = sum(numeric) / len(numeric)
+        elif isinstance(value, dict):
+            # Nested sub-scores (e.g., detailed mode)
+            for sub_key, sub_value in value.items():
+                if isinstance(sub_value, (int, float)):
+                    flat[f"{prefixed_key}_{sub_key}"] = float(sub_value)
+
+    return flat
 
 
 if __name__ == "__main__":
