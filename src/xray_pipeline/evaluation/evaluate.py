@@ -1,8 +1,7 @@
 """Evaluate generated radiology reports using RadEval.
 
-Uses the new RadEval 2.x API where metrics are passed as a list of
-strings rather than individual boolean flags. The set of metrics to
-compute is driven by ``config.evaluation.metrics`` in the YAML config.
+Uses the RadEval 2.x API. The set of metrics to compute is driven by
+boolean toggles in ``config.evaluation`` (e.g., ``bleu: true``).
 
 Usage::
 
@@ -18,7 +17,9 @@ Usage::
 """
 
 import argparse
+import json
 import logging
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -37,12 +38,35 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _patch_radeval_import() -> None:
+    """Work around a case-sensitivity bug in radeval <= 2.2.x.
+
+    Internally, some radeval modules import from ``RadEval.metrics...``
+    (capital R/E). On case-sensitive filesystems (Linux), this fails
+    because the installed package directory is ``radeval`` (lowercase).
+
+    This registers the lowercase module as an alias so the uppercase
+    imports resolve correctly. Safe to call multiple times.
+    """
+    import radeval
+    sys.modules.setdefault("RadEval", radeval)
+
+    # Also alias submodules that are lazily loaded internally
+    for key, mod in list(sys.modules.items()):
+        if key.startswith("radeval."):
+            alias = "RadEval." + key[len("radeval."):]
+            sys.modules.setdefault(alias, mod)
+
+
 def run_evaluation(
     config_path: Path,
     dataset_name: str,
     run_id: Optional[str] = None,
 ) -> None:
     """Evaluate predictions against references using RadEval.
+
+    Scores are saved both to MLflow and to a local JSON file at
+    ``<results_dir>/<experiment>/<dataset>/eval_scores.json``.
 
     Args:
         config_path: Path to the YAML configuration file.
@@ -52,7 +76,9 @@ def run_evaluation(
     """
     config = PipelineConfig.from_yaml(config_path)
 
-    # Late import: radeval is only available in the eval environment
+    # Patch case-sensitivity bug before importing RadEval internals
+    _patch_radeval_import()
+
     from radeval import RadEval
 
     # -- Read Predictions --------------------------------------------------
@@ -80,21 +106,31 @@ def run_evaluation(
 
     # -- Build Evaluator from Config ---------------------------------------
     eval_cfg = config.evaluation
-    logger.info("Running RadEval with metrics: %s", eval_cfg.metrics)
+    enabled = eval_cfg.enabled_metrics()
+
+    if not enabled:
+        logger.error("No metrics enabled in config.evaluation. Nothing to do.")
+        return
+
+    logger.info("Running RadEval with metrics: %s", enabled)
 
     evaluator = RadEval(
-        metrics=eval_cfg.metrics,
+        metrics=enabled,
         per_sample=eval_cfg.per_sample,
         detailed=eval_cfg.detailed,
     )
 
     scores = evaluator(refs=references, hyps=predictions)
 
-    # -- Flatten & Log to MLflow -------------------------------------------
+    # -- Flatten scores for logging ----------------------------------------
+    flat_scores = _flatten_scores(scores, dataset_name)
+
+    # -- Save to disk ------------------------------------------------------
+    _save_scores_to_disk(run_dir, scores, flat_scores, enabled)
+
+    # -- Log to MLflow -----------------------------------------------------
     mlflow.set_tracking_uri(config.paths.mlflow_tracking_uri)
     mlflow.set_experiment(config.project.experiment_name)
-
-    flat_scores = _flatten_scores(scores, dataset_name)
 
     if run_id:
         with mlflow.start_run(run_id=run_id):
@@ -104,7 +140,7 @@ def run_evaluation(
         with mlflow.start_run(run_name=f"eval_{dataset_name}"):
             mlflow.log_metrics(flat_scores)
             mlflow.set_tag("eval_dataset", dataset_name)
-            mlflow.set_tag("eval_metrics", ",".join(eval_cfg.metrics))
+            mlflow.set_tag("eval_metrics", ",".join(enabled))
             logger.info("Metrics logged to new MLflow run.")
 
     logger.info("Evaluation complete:")
@@ -115,13 +151,12 @@ def run_evaluation(
 def _flatten_scores(
     scores: dict, dataset_name: str
 ) -> dict[str, float]:
-    """Flatten potentially nested RadEval output into MLflow-compatible metrics.
+    """Flatten RadEval output into MLflow-compatible scalar metrics.
 
-    RadEval returns a flat dict in default mode (``{"bleu": 0.36, ...}``),
-    but some metrics produce sub-keys when ``detailed=True``
-    (e.g., ``{"bleu_1": 0.55, "bleu_2": 0.42}``).
-
-    Per-sample mode returns lists which are averaged here for MLflow logging.
+    Handles three output shapes:
+    - Default: ``{"bleu": 0.36}`` -- flat scalars
+    - Detailed: ``{"bleu_1": 0.55, "bleu_2": 0.42}`` -- sub-scores
+    - Per-sample: ``{"bleu": [0.85, 0.40]}`` -- lists, averaged here
 
     Args:
         scores: Raw RadEval output dict.
@@ -138,17 +173,62 @@ def _flatten_scores(
         if isinstance(value, (int, float)):
             flat[prefixed_key] = float(value)
         elif isinstance(value, list):
-            # Per-sample mode: average for MLflow
+            # Per-sample mode: average for MLflow scalar logging
             numeric = [v for v in value if isinstance(v, (int, float))]
             if numeric:
                 flat[prefixed_key] = sum(numeric) / len(numeric)
         elif isinstance(value, dict):
-            # Nested sub-scores (e.g., detailed mode)
             for sub_key, sub_value in value.items():
                 if isinstance(sub_value, (int, float)):
                     flat[f"{prefixed_key}_{sub_key}"] = float(sub_value)
 
     return flat
+
+
+def _save_scores_to_disk(
+    run_dir: Path,
+    raw_scores: dict,
+    flat_scores: dict[str, float],
+    enabled_metrics: list[str],
+) -> None:
+    """Write evaluation results to ``eval_scores.json`` in the run directory.
+
+    The JSON contains:
+    - ``metrics_used``: list of metric names that were evaluated
+    - ``raw_scores``: the direct output from RadEval (may include lists
+      in per_sample mode)
+    - ``summary``: the flattened, prefixed scores (same as what goes to MLflow)
+
+    Args:
+        run_dir: Directory where predictions.jsonl lives.
+        raw_scores: Direct RadEval output dict.
+        flat_scores: Flattened dict for MLflow.
+        enabled_metrics: List of metric names that were enabled.
+    """
+    # Convert any non-serializable values to strings
+    serializable_raw = {}
+    for k, v in raw_scores.items():
+        if isinstance(v, (int, float, str, bool)):
+            serializable_raw[k] = v
+        elif isinstance(v, list):
+            serializable_raw[k] = v
+        elif isinstance(v, dict):
+            serializable_raw[k] = v
+        else:
+            serializable_raw[k] = str(v)
+
+    output = {
+        "metrics_used": enabled_metrics,
+        "raw_scores": serializable_raw,
+        "summary": flat_scores,
+    }
+
+    run_dir.mkdir(parents=True, exist_ok=True)
+    output_path = run_dir / "eval_scores.json"
+    with output_path.open("w", encoding="utf-8") as f:
+        json.dump(output, f, indent=2, ensure_ascii=False)
+
+    logger.info("Scores saved to: %s", output_path)
 
 
 if __name__ == "__main__":

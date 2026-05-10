@@ -437,14 +437,26 @@ inference:
   max_new_tokens: 512     # Max tokens to generate per study
   temperature: 0.1        # Low temp = more deterministic output
 
-# Available: bleu, rouge, bertscore, radeval_bertscore, f1chexbert,
-#            f1radbert_ct, radgraph, ratescore, radgraph_radcliq,
-#            radcliq, srrbert, temporal, green, mammo_green,
-#            crimson, radfact_ct
+# Toggle each metric individually (true/false)
 evaluation:
-  metrics: [bleu, rouge, bertscore, radcliq, f1chexbert]
-  per_sample: false       # true = per-sample list, false = corpus average
-  detailed: false         # true = sub-scores (BLEU-1/2/3/4, label F1s)
+  bleu: true                # Lexical
+  rouge: true
+  bertscore: true           # Semantic
+  radeval_bertscore: false
+  ratescore: false
+  srrbert: false
+  f1chexbert: true          # Clinical
+  f1radbert_ct: false
+  radgraph: false
+  radgraph_radcliq: false
+  radcliq: true
+  temporal: false
+  green: false              # LLM-based (need API keys)
+  mammo_green: false
+  crimson: false
+  radfact_ct: false
+  per_sample: false         # per-sample list vs corpus average
+  detailed: false           # sub-scores (BLEU-1/2/3/4, label F1s)
 ```
 
 ## Makefile Targets

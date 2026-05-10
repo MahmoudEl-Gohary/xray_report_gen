@@ -52,18 +52,30 @@ inference:
   max_new_tokens: 512
   temperature: 0.1
 
-# RadEval evaluation metrics.
-# Available metrics (pick any combination):
-#   Lexical:   bleu, rouge
-#   Semantic:  bertscore, radeval_bertscore, ratescore, srrbert
-#   Clinical:  f1chexbert, f1radbert_ct, radgraph, radgraph_radcliq, radcliq, temporal
-#   LLM-based: green, mammo_green, crimson, radfact_ct  (require API keys)
+# RadEval evaluation metrics -- toggle each metric individually.
+# LLM-based metrics (green, mammo_green, crimson, radfact_ct) require
+# OPENAI_API_KEY and/or GEMINI_API_KEY in the .env file.
 evaluation:
-  metrics:
-    - bleu
-    - rouge
-    - bertscore
-    - radcliq
-    - f1chexbert
+  # Lexical
+  bleu: true
+  rouge: true
+  # Semantic
+  bertscore: true
+  radeval_bertscore: false
+  ratescore: false
+  srrbert: false
+  # Clinical
+  f1chexbert: true
+  f1radbert_ct: false
+  radgraph: false
+  radgraph_radcliq: false
+  radcliq: true
+  temporal: false
+  # LLM-based (require API keys)
+  green: false
+  mammo_green: false
+  crimson: false
+  radfact_ct: false
+  # Output
   per_sample: false     # true = per-sample scores (list), false = corpus-level (float)
   detailed: false       # true = include sub-scores (BLEU-1, BLEU-2, label F1s, etc.)

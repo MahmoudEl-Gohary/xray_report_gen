@@ -25,9 +25,13 @@ def test_config_loader():
     assert config.inference.max_new_tokens == 512
     assert config.inference.temperature == 0.1
 
-    # Check evaluation config
-    assert "bleu" in config.evaluation.metrics
+    # Check evaluation config (boolean toggles)
+    assert config.evaluation.bleu is True
+    assert config.evaluation.radgraph is False
     assert config.evaluation.per_sample is False
+    enabled = config.evaluation.enabled_metrics()
+    assert "bleu" in enabled
+    assert "radgraph" not in enabled
 
 
 def test_config_overrides():

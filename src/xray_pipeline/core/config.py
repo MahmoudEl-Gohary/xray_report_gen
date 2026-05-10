@@ -66,20 +66,60 @@ class InferenceConfig(BaseModel):
 class EvalConfig(BaseModel):
     """Evaluation configuration for RadEval metrics.
 
-    Available metrics (RadEval 2.1+):
-        bleu, rouge, bertscore, radeval_bertscore, f1chexbert,
-        f1radbert_ct, radgraph, ratescore, radgraph_radcliq,
-        radcliq, srrbert, temporal, green, mammo_green,
-        crimson, radfact_ct
+    Each metric can be toggled individually via its boolean flag.
+    Only metrics set to ``true`` will be computed during evaluation.
 
-    Note: LLM-based metrics (crimson, mammo_green, radfact_ct)
-    require API keys set via OPENAI_API_KEY / GEMINI_API_KEY
-    environment variables (or in the .env file).
+    Metric categories:
+        Lexical:   bleu, rouge
+        Semantic:  bertscore, radeval_bertscore, ratescore, srrbert
+        Clinical:  f1chexbert, f1radbert_ct, radgraph, radgraph_radcliq,
+                   radcliq, temporal
+        LLM-based: green, mammo_green, crimson, radfact_ct
+                   (require OPENAI_API_KEY / GEMINI_API_KEY)
     """
 
-    metrics: list[str] = ["bleu", "rouge", "bertscore", "radcliq", "f1chexbert"]
+    # -- Lexical metrics ---------------------------------------------------
+    bleu: bool = True
+    rouge: bool = True
+
+    # -- Semantic metrics --------------------------------------------------
+    bertscore: bool = True
+    radeval_bertscore: bool = False
+    ratescore: bool = False
+    srrbert: bool = False
+
+    # -- Clinical metrics --------------------------------------------------
+    f1chexbert: bool = True
+    f1radbert_ct: bool = False
+    radgraph: bool = False
+    radgraph_radcliq: bool = False
+    radcliq: bool = True
+    temporal: bool = False
+
+    # -- LLM-based metrics (require API keys) ------------------------------
+    green: bool = False
+    mammo_green: bool = False
+    crimson: bool = False
+    radfact_ct: bool = False
+
+    # -- Output modes ------------------------------------------------------
     per_sample: bool = False
     detailed: bool = False
+
+    def enabled_metrics(self) -> list[str]:
+        """Return the list of metric names where the flag is True.
+
+        Returns:
+            List of enabled metric name strings.
+        """
+        _non_metric_fields = {"per_sample", "detailed"}
+        return [
+            name
+            for name in type(self).model_fields
+            if name not in _non_metric_fields
+            and isinstance(getattr(self, name), bool)
+            and getattr(self, name)
+        ]
 
 
 class PipelineConfig(BaseModel):
